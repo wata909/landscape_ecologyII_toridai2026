@@ -17,13 +17,14 @@
     --ui: #2f6b4f;
     --ui-dark: #23523c;
     --warn: #b3261e;
+    --caution: #8a5a00;
     --ramp-low: #ffffff;
     --ramp-high: #e0201b;
     --font: "BIZ UDPGothic", "Hiragino Sans", "Yu Gothic UI", "Meiryo", sans-serif;
   }
   * { box-sizing: border-box; }
   [hidden] { display: none !important; }
-  html, body { margin: 0; height: 100%; font-family: var(--font); color: var(--ink); }
+  html, body { margin: 0; height: 100%; font-family: var(--font); color: var(--ink); background: #e8ece9; }
   #map { position: absolute; inset: 0; }
 
   .panel {
@@ -33,8 +34,16 @@
     padding: 16px 18px 18px; line-height: 1.6;
     box-shadow: 0 2px 10px rgba(36, 51, 43, .18);
   }
+  .panel-head { display: flex; align-items: flex-start; gap: 8px; }
+  .panel-head > div { flex: 1; min-width: 0; }
   .panel h1 { font-size: 1.15rem; margin: 0 0 2px; letter-spacing: .02em; }
-  .panel .sub { font-size: .8rem; color: var(--muted); margin: 0 0 14px; }
+  .panel .sub { font-size: .8rem; color: var(--muted); margin: 0; }
+  .toggle {
+    display: none; flex: none; border: 1px solid var(--line); background: #fff; color: var(--ink);
+    border-radius: 4px; padding: 2px 10px; font-size: .78rem; cursor: pointer;
+  }
+  .panel.collapsed .body, .panel.collapsed .sub { display: none; }
+  .body { margin-top: 2px; }
   .step { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 12px; }
   .step h2 { font-size: .9rem; margin: 0 0 8px; display: flex; gap: 8px; align-items: baseline; }
   .step h2 .n {
@@ -43,12 +52,14 @@
   }
   .step.off { opacity: .45; pointer-events: none; }
 
-  button, select, input[type=range] { font: inherit; }
+  button, select, input { font: inherit; }
   .btn {
     display: block; width: 100%; padding: 9px 12px; border: 0; border-radius: 4px;
     background: var(--ui); color: #fff; font-weight: 700; cursor: pointer;
   }
   .btn:hover { background: var(--ui-dark); }
+  .btn.sub-btn { background: #fff; color: var(--ui-dark); border: 1px solid var(--ui); }
+  .btn.sub-btn:hover { background: #eef4f0; }
   .hint { font-size: .78rem; color: var(--muted); margin: 6px 0 0; }
   .file-name { font-size: .8rem; margin: 8px 0 0; word-break: break-all; }
   .msg { font-size: .8rem; margin: 8px 0 0; color: var(--warn); }
@@ -74,6 +85,20 @@
   .row { display: flex; align-items: center; gap: 10px; margin-top: 12px; font-size: .82rem; }
   .row input { flex: 1; accent-color: var(--ui); }
 
+  .share-out { margin-top: 10px; }
+  .share-out .line { display: flex; gap: 6px; }
+  .share-out input {
+    flex: 1; min-width: 0; padding: 6px 8px; border: 1px solid var(--line); border-radius: 4px;
+    font-size: .78rem; color: var(--ink); background: #f6f8f7;
+  }
+  .share-out button {
+    flex: none; padding: 6px 12px; border: 0; border-radius: 4px; background: var(--ui); color: #fff;
+    font-size: .8rem; font-weight: 700; cursor: pointer;
+  }
+  .share-note { font-size: .78rem; margin: 6px 0 0; color: var(--muted); }
+  .share-note.caution { color: var(--caution); }
+  .share-note.error { color: var(--warn); }
+
   .drop {
     position: absolute; inset: 0; z-index: 2000; display: none;
     place-items: center; background: rgba(47, 107, 79, .18);
@@ -89,36 +114,56 @@
   .props tr.sel th, .props tr.sel td { color: var(--ink); font-weight: 700; background: #fde8e7; }
 
   @media (max-width: 640px) {
-    .panel { top: auto; bottom: 12px; left: 12px; right: 12px; width: auto; max-height: 46%; }
+    .panel { top: auto; bottom: 26px; left: 8px; right: 8px; width: auto; max-height: 46%; padding: 12px 14px 14px; }
+    .toggle { display: block; }
   }
 </style>
 </head>
 <body>
 <div id="map" role="application" aria-label="地図"></div>
 
-<section class="panel" aria-label="操作パネル">
-  <h1>連続性マップ</h1>
-  <p class="sub">景観生態学II　GeoJSON の属性を白→赤で塗り分けて表示します</p>
-
-  <div class="step">
-    <h2><span class="n">1</span>ファイルを読み込む</h2>
-    <button class="btn" id="pick" type="button">GeoJSON を選ぶ</button>
-    <input id="file" type="file" accept=".geojson,.json,application/geo+json,application/json" hidden>
-    <p class="hint">地図の上にファイルをドラッグ＆ドロップしても読み込めます。</p>
-    <p class="file-name" id="fname"></p>
-    <p class="msg" id="msg" role="alert"></p>
+<section class="panel" id="panel" aria-label="操作パネル">
+  <div class="panel-head">
+    <div>
+      <h1>連続性マップ</h1>
+      <p class="sub">景観生態学II　GeoJSON の属性を白→赤で塗り分けて表示します</p>
+    </div>
+    <button class="toggle" id="toggle" type="button" aria-expanded="true" aria-controls="panel-body">閉じる</button>
   </div>
 
-  <div class="step off" id="step2">
-    <h2><span class="n">2</span>色を塗る列を選ぶ</h2>
-    <select id="col" aria-label="色を塗る列"></select>
-    <div class="legend" id="legend" hidden>
-      <div class="bar"></div>
-      <div class="ends"><span id="vmin"></span><span id="vmax"></span></div>
-      <div class="cap">赤いほど値が大きい</div>
-      <div class="nodata" id="nodata" hidden><i></i>値なし</div>
+  <div class="body" id="panel-body">
+    <div class="step">
+      <h2><span class="n">1</span>ファイルを読み込む</h2>
+      <button class="btn" id="pick" type="button">GeoJSON を選ぶ</button>
+      <input id="file" type="file" accept=".geojson,.json,application/geo+json,application/json" hidden>
+      <p class="hint">地図の上にファイルをドラッグ＆ドロップしても読み込めます。</p>
+      <p class="file-name" id="fname"></p>
+      <p class="msg" id="msg" role="alert"></p>
     </div>
-    <label class="row">透明度<input id="opacity" type="range" min="0.2" max="1" step="0.05" value="0.85"></label>
+
+    <div class="step off" id="step2">
+      <h2><span class="n">2</span>色を塗る列を選ぶ</h2>
+      <select id="col" aria-label="色を塗る列"></select>
+      <div class="legend" id="legend" hidden>
+        <div class="bar" id="bar"></div>
+        <div class="ends"><span id="vmin"></span><span id="vmax"></span></div>
+        <div class="cap" id="cap">赤いほど値が大きい</div>
+        <div class="nodata" id="nodata" hidden><i></i>値なし</div>
+      </div>
+      <label class="row">透明度<input id="opacity" type="range" min="0.2" max="1" step="0.05" value="0.85"></label>
+    </div>
+
+    <div class="step off" id="step3">
+      <h2><span class="n">3</span>共有する</h2>
+      <button class="btn sub-btn" id="share" type="button">この表示の共有URLを作る</button>
+      <div class="share-out" id="share-out" hidden>
+        <div class="line">
+          <input id="share-url" type="text" readonly aria-label="共有URL">
+          <button id="copy" type="button">コピー</button>
+        </div>
+      </div>
+      <p class="share-note" id="share-note" hidden></p>
+    </div>
   </div>
 </section>
 
@@ -131,6 +176,10 @@
   const RAMP_HIGH = [224, 32, 27];
   const NODATA = '#c9c9c9';
   const PREFERRED = ['connect_rev', 'connect'];
+  const MOBILE = window.matchMedia('(max-width: 640px)');
+  // 共有URLの長さの目安（文字数）
+  const URL_WARN = 8000;      // これを超えるとメール・LMS・チャットで切れることがある
+  const URL_MAX = 2000000;    // Chrome の上限（約2MB）
 
   const $ = (id) => document.getElementById(id);
   const map = L.map('map', { zoomControl: false }).setView([35.45, 134.2], 11);
@@ -139,21 +188,52 @@
     `https://cyberjapandata.gsi.go.jp/xyz/${id}/{z}/{x}/{y}.${ext}`,
     { maxNativeZoom, maxZoom: 19, attribution: '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener">地理院タイル</a>' }
   );
-  const bases = {
-    '淡色地図': gsi('pale', 'png', 18),
-    '標準地図': gsi('std', 'png', 18),
-    '写真': gsi('seamlessphoto', 'jpg', 18),
-  };
-  bases['淡色地図'].addTo(map);
+  const BASES = [
+    { key: 'pale', label: '淡色地図', layer: gsi('pale', 'png', 18) },
+    { key: 'std', label: '標準地図', layer: gsi('std', 'png', 18) },
+    { key: 'photo', label: '写真', layer: gsi('seamlessphoto', 'jpg', 18) },
+  ];
+  let baseKey = 'pale';
+  BASES[0].layer.addTo(map);
   L.control.zoom({ position: 'topright' }).addTo(map);
-  L.control.layers(bases, null, { position: 'topright' }).addTo(map);
-  L.control.scale({ imperial: false, position: 'bottomright' }).addTo(map);
+  L.control.layers(Object.fromEntries(BASES.map((b) => [b.label, b.layer])), null, { position: 'topright' }).addTo(map);
+  L.control.scale({ imperial: false, position: MOBILE.matches ? 'topleft' : 'bottomright' }).addTo(map);
+  map.on('baselayerchange', (e) => {
+    const b = BASES.find((x) => x.layer === e.layer);
+    if (b) baseKey = b.key;
+  });
+  function setBase(key) {
+    const b = BASES.find((x) => x.key === key);
+    if (!b || b.key === baseKey) return;
+    BASES.forEach((x) => map.removeLayer(x.layer));
+    b.layer.addTo(map);
+    baseKey = b.key;
+  }
 
   let layer = null;
   let data = null;
   let column = '';
   let range = null;
   let opacity = Number($('opacity').value);
+  // 読み込み元。共有URLの作り方が変わる：{ kind: 'url', url } または { kind: 'file', name }
+  let source = null;
+
+  // ---------- パネルの開閉（スマホ） ----------
+  function setCollapsed(collapsed) {
+    $('panel').classList.toggle('collapsed', collapsed);
+    $('toggle').textContent = collapsed ? '開く' : '閉じる';
+    $('toggle').setAttribute('aria-expanded', String(!collapsed));
+  }
+  $('toggle').addEventListener('click', () => setCollapsed(!$('panel').classList.contains('collapsed')));
+
+  // パネルに隠れないように、地図を寄せるときの余白をパネルの位置から決める
+  function fitPadding() {
+    const p = $('panel').getBoundingClientRect();
+    if (MOBILE.matches) {
+      return { paddingTopLeft: [20, 20], paddingBottomRight: [60, window.innerHeight - p.top + 12] };
+    }
+    return { paddingTopLeft: [p.right + 20, 30], paddingBottomRight: [60, 30] };
+  }
 
   // ---------- 読み込み ----------
   $('pick').addEventListener('click', () => $('file').click());
@@ -178,22 +258,22 @@
 
   function readFile(file) {
     const r = new FileReader();
-    r.onload = () => load(r.result, file.name);
+    r.onload = () => load(r.result, file.name, { kind: 'file', name: file.name });
     r.onerror = () => fail('ファイルを読み込めませんでした。もう一度選び直してください。');
     r.readAsText(file);
   }
 
-  async function loadUrl(url) {
+  async function loadUrl(url, state) {
     try {
       const res = await fetch(url);
       if (!res.ok) throw new Error(res.status);
-      load(await res.text(), url.split('/').pop());
+      load(await res.text(), decodeURIComponent(url.split('/').pop().split('?')[0]), { kind: 'url', url }, state);
     } catch (err) {
       fail(`URL から読み込めませんでした（${url}）。`);
     }
   }
 
-  function load(text, name) {
+  function load(text, name, src, state) {
     $('msg').textContent = '';
     let gj;
     try { gj = JSON.parse(text); }
@@ -209,15 +289,25 @@
     }
 
     data = gj;
+    source = src;
     $('fname').textContent = `読み込み済み：${name}（${gj.features.length} 地物）`;
-    buildColumnList();
+    buildColumnList(state && state.col);
+    if (state) {
+      if (state.op) { opacity = clamp(Number(state.op), 0.2, 1) || opacity; $('opacity').value = opacity; }
+      if (state.base) setBase(state.base);
+      // スマホで共有URLから開いたときは、地図が見えるようにパネルを畳む
+      if (MOBILE.matches) setCollapsed(true);
+    }
     $('step2').classList.remove('off');
+    $('step3').classList.remove('off');
+    resetShare();
     draw();
     const b = layer.getBounds();
-    if (b.isValid()) map.fitBounds(b, { padding: [30, 30] });
+    if (b.isValid()) map.fitBounds(b, fitPadding());
   }
 
   function fail(text) { $('msg').textContent = text; }
+  function clamp(v, lo, hi) { return Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : NaN; }
 
   function firstCoord(gj) {
     for (const f of gj.features) {
@@ -241,35 +331,48 @@
     return [...seen].filter(([, ok]) => ok).map(([k]) => k);
   }
 
-  function buildColumnList() {
+  function buildColumnList(wanted) {
     const cols = numericColumns(data);
     const sel = $('col');
     sel.innerHTML = '';
     sel.append(new Option('塗らない（輪郭のみ）', ''));
     cols.forEach((c) => sel.append(new Option(c, c)));
-    column = PREFERRED.find((c) => cols.includes(c)) || '';
+    if (wanted === '' || (wanted && cols.includes(wanted))) column = wanted;
+    else column = PREFERRED.find((c) => cols.includes(c)) || '';
     sel.value = column;
   }
 
-  $('col').addEventListener('change', (e) => { column = e.target.value; draw(); });
+  $('col').addEventListener('change', (e) => { column = e.target.value; draw(); resetShare(); });
   $('opacity').addEventListener('input', (e) => {
     opacity = Number(e.target.value);
     if (layer) layer.setStyle(style);
+    resetShare();
   });
+  map.on('baselayerchange', resetShare);
 
   // ---------- 描画 ----------
   function computeRange() {
     if (!column) return null;
-    const vals = data.features.map((f) => (f.properties || {})[column]).filter((v) => typeof v === 'number' && Number.isFinite(v));
-    if (!vals.length) return null;
-    return { min: Math.min(...vals), max: Math.max(...vals) };
+    let min = Infinity, max = -Infinity;
+    for (const f of data.features) {
+      const v = (f.properties || {})[column];
+      if (typeof v !== 'number' || !Number.isFinite(v)) continue;
+      if (v < min) min = v;
+      if (v > max) max = v;
+    }
+    return min <= max ? { min, max } : null;
+  }
+
+  function rampColor(t) {
+    const c = RAMP_LOW.map((lo, i) => Math.round(lo + (RAMP_HIGH[i] - lo) * t));
+    return `rgb(${c.join(',')})`;
   }
 
   function colorOf(v) {
     if (typeof v !== 'number' || !Number.isFinite(v)) return NODATA;
-    const t = range.max === range.min ? 1 : (v - range.min) / (range.max - range.min);
-    const c = RAMP_LOW.map((lo, i) => Math.round(lo + (RAMP_HIGH[i] - lo) * t));
-    return `rgb(${c.join(',')})`;
+    // 全地物が同じ値なら差がないので中間色で塗る（全面が「最大＝真っ赤」に見えるのを避ける）
+    const t = range.max === range.min ? 0.5 : (v - range.min) / (range.max - range.min);
+    return rampColor(t);
   }
 
   function style(f) {
@@ -295,8 +398,21 @@
     const lg = $('legend');
     if (!column || !range) { lg.hidden = true; return; }
     lg.hidden = false;
-    $('vmin').textContent = fmt(range.min);
-    $('vmax').textContent = fmt(range.max);
+    if (range.min === range.max) {
+      $('bar').style.background = rampColor(0.5);
+      $('vmin').textContent = fmt(range.min);
+      $('vmax').textContent = '';
+      $('cap').textContent = '全地物が同じ値のため、色の差はありません';
+    } else {
+      $('bar').style.background = '';
+      // 最大値に比べて無視できるほど小さい最小値は「≈0」と表示
+      const tiny = range.min !== 0 && Math.abs(range.min) < (range.max - range.min) * 1e-6;
+      $('vmin').textContent = tiny ? '≈0' : fmt(range.min);
+      $('vmin').title = String(range.min);
+      $('vmax').textContent = fmt(range.max);
+      $('vmax').title = String(range.max);
+      $('cap').textContent = '赤いほど値が大きい';
+    }
     const missing = data.features.some((f) => typeof (f.properties || {})[column] !== 'number');
     $('nodata').hidden = !missing;
   }
@@ -313,14 +429,142 @@
   }
 
   function popupHtml(p) {
-    const rows = Object.entries(p).map(([k, v]) =>
-      `<tr class="${k === column ? 'sel' : ''}"><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join('');
+    const rows = Object.entries(p).map(([k, v]) => {
+      const shown = typeof v === 'number' && Number.isFinite(v) ? fmt(v) : v;
+      return `<tr class="${k === column ? 'sel' : ''}"><th>${esc(k)}</th><td title="${esc(v)}">${esc(shown)}</td></tr>`;
+    }).join('');
     return `<table class="props">${rows}</table>`;
   }
 
-  // ---------- URL パラメータ（?data=...）----------
-  const q = new URLSearchParams(location.search).get('data');
-  if (q) loadUrl(q);
+  // ---------- 共有URL ----------
+  // URL から読み込んだ場合：?data=<URL>#col=..&op=..&base=..
+  // 手元のファイルの場合　：#gz=<圧縮したGeoJSON>&name=..&col=..&op=..&base=..
+  //   ＃以降はサーバーに送られないので、データはURLの中だけに入る（URLを知っている人は誰でも見られる）
+  function resetShare() {
+    $('share-out').hidden = true;
+    $('share-note').hidden = true;
+  }
+
+  function note(text, kind) {
+    const n = $('share-note');
+    n.textContent = text;
+    n.className = 'share-note' + (kind ? ' ' + kind : '');
+    n.hidden = false;
+  }
+
+  function stateParams() {
+    const h = new URLSearchParams();
+    h.set('col', column);
+    h.set('op', String(opacity));
+    h.set('base', baseKey);
+    return h;
+  }
+
+  // 座標を小数6桁（約0.1m）に丸めてURLを短くする
+  function roundCoords(c) {
+    return Array.isArray(c) ? c.map(roundCoords) : (typeof c === 'number' ? Math.round(c * 1e6) / 1e6 : c);
+  }
+  function compactGeoJSON(gj) {
+    return {
+      type: 'FeatureCollection',
+      features: gj.features.map((f) => ({
+        type: 'Feature',
+        properties: f.properties || {},
+        geometry: f.geometry ? { ...f.geometry, coordinates: roundCoords(f.geometry.coordinates) } : null,
+      })),
+    };
+  }
+
+  async function pipeBytes(bytes, stream) {
+    const out = new Response(new Blob([bytes]).stream().pipeThrough(stream));
+    return new Uint8Array(await out.arrayBuffer());
+  }
+  function toB64url(bytes) {
+    let s = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+  function fromB64url(str) {
+    const b = atob(str.replace(/-/g, '+').replace(/_/g, '/'));
+    const u = new Uint8Array(b.length);
+    for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i);
+    return u;
+  }
+  async function encodeData(gj) {
+    const json = new TextEncoder().encode(JSON.stringify(compactGeoJSON(gj)));
+    return toB64url(await pipeBytes(json, new CompressionStream('deflate-raw')));
+  }
+  async function decodeData(str) {
+    return new TextDecoder().decode(await pipeBytes(fromB64url(str), new DecompressionStream('deflate-raw')));
+  }
+
+  $('share').addEventListener('click', async () => {
+    if (!data || !source) return;
+    const base = location.origin + location.pathname;
+    const h = stateParams();
+    let url;
+    if (source.kind === 'url') {
+      url = `${base}?data=${encodeURIComponent(source.url)}#${h}`;
+    } else {
+      if (typeof CompressionStream === 'undefined') {
+        return note('このブラウザは共有URLの作成に対応していません。Chrome・Edge・Firefox・Safari の最新版を使ってください。', 'error');
+      }
+      note('作成中…');
+      let gz;
+      try { gz = await encodeData(data); }
+      catch { return note('共有URLを作れませんでした。', 'error'); }
+      h.set('name', source.name);
+      url = `${base}#gz=${gz}&${h}`;
+    }
+
+    if (url.length > URL_MAX) {
+      resetShare();
+      return note(`データが大きすぎてURLに入りません（${kb(url.length)}）。GeoJSON を GitHub などに置き、?data=<そのURL> の形で共有してください。`, 'error');
+    }
+    $('share-url').value = url;
+    $('share-out').hidden = false;
+    if (source.kind === 'url') {
+      note('読み込み元のURLと表示設定（列・透明度・背景地図）が入ったURLです。');
+    } else if (url.length > URL_WARN) {
+      note(`データ本体をURLに入れました（${kb(url.length)}）。長いので、メール・LMS・チャットでは途中で切れることがあります。切れる場合は GeoJSON を GitHub などに置いて ?data= で共有してください。URLを知っている人は誰でもデータを見られます。`, 'caution');
+    } else {
+      note(`データ本体をURLに入れました（${kb(url.length)}）。URLを知っている人は誰でもデータを見られます。`);
+    }
+  });
+
+  $('copy').addEventListener('click', async () => {
+    const inp = $('share-url');
+    try {
+      await navigator.clipboard.writeText(inp.value);
+    } catch {
+      inp.select();
+      document.execCommand('copy');
+    }
+    $('copy').textContent = 'コピー済み';
+    setTimeout(() => { $('copy').textContent = 'コピー'; }, 1500);
+  });
+
+  function kb(n) { return n < 1024 ? `${n} 文字` : `約 ${Math.round(n / 1024)} KB`; }
+
+  // ---------- 起動時：URL から読み込む ----------
+  (async () => {
+    const hash = new URLSearchParams(location.hash.slice(1));
+    const state = { col: hash.get('col'), op: hash.get('op'), base: hash.get('base') };
+    const gz = hash.get('gz');
+    const q = new URLSearchParams(location.search).get('data');
+    if (gz) {
+      if (typeof DecompressionStream === 'undefined') {
+        return fail('このブラウザは共有URLの読み込みに対応していません。Chrome・Edge・Firefox・Safari の最新版で開いてください。');
+      }
+      let text;
+      try { text = await decodeData(gz); }
+      catch { return fail('共有URLのデータを読めません。URLが途中で切れている可能性があります。'); }
+      const name = hash.get('name') || '共有データ';
+      load(text, `${name}（共有URLから）`, { kind: 'file', name }, state);
+    } else if (q) {
+      loadUrl(q, state);
+    }
+  })();
 })();
 </script>
 </body>
