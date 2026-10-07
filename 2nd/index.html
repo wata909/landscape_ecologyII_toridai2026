@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>連続性マップ｜景観生態学II</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&display=swap">
+<style>
+  :root {
+    --ink: #24332b;
+    --muted: #5f6f66;
+    --line: #d5ddd8;
+    --paper: #ffffff;
+    --ui: #2f6b4f;
+    --ui-dark: #23523c;
+    --warn: #b3261e;
+    --ramp-low: #ffffff;
+    --ramp-high: #e0201b;
+    --font: "BIZ UDPGothic", "Hiragino Sans", "Yu Gothic UI", "Meiryo", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { margin: 0; height: 100%; font-family: var(--font); color: var(--ink); }
+  #map { position: absolute; inset: 0; }
+
+  .panel {
+    position: absolute; z-index: 1000; top: 12px; left: 12px;
+    width: 300px; max-height: calc(100% - 24px); overflow-y: auto;
+    background: var(--paper); border: 1px solid var(--line); border-radius: 6px;
+    padding: 16px 18px 18px; line-height: 1.6;
+    box-shadow: 0 2px 10px rgba(36, 51, 43, .18);
+  }
+  .panel h1 { font-size: 1.15rem; margin: 0 0 2px; letter-spacing: .02em; }
+  .panel .sub { font-size: .8rem; color: var(--muted); margin: 0 0 14px; }
+  .step { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 12px; }
+  .step h2 { font-size: .9rem; margin: 0 0 8px; display: flex; gap: 8px; align-items: baseline; }
+  .step h2 .n {
+    display: inline-grid; place-items: center; width: 1.4em; height: 1.4em; flex: none;
+    border-radius: 50%; background: var(--ui); color: #fff; font-size: .78rem;
+  }
+  .step.off { opacity: .45; pointer-events: none; }
+
+  button, select, input[type=range] { font: inherit; }
+  .btn {
+    display: block; width: 100%; padding: 9px 12px; border: 0; border-radius: 4px;
+    background: var(--ui); color: #fff; font-weight: 700; cursor: pointer;
+  }
+  .btn:hover { background: var(--ui-dark); }
+  .hint { font-size: .78rem; color: var(--muted); margin: 6px 0 0; }
+  .file-name { font-size: .8rem; margin: 8px 0 0; word-break: break-all; }
+  .msg { font-size: .8rem; margin: 8px 0 0; color: var(--warn); }
+  .msg:empty { display: none; }
+
+  select {
+    width: 100%; padding: 7px 8px; border: 1px solid var(--line); border-radius: 4px;
+    background: #fff; color: var(--ink);
+  }
+  :focus-visible { outline: 3px solid #f2b705; outline-offset: 2px; }
+
+  .legend { margin-top: 12px; }
+  .legend .bar {
+    height: 14px; border: 1px solid #9aa79f; border-radius: 2px;
+    background: linear-gradient(to right, var(--ramp-low), var(--ramp-high));
+  }
+  .legend .ends { display: flex; justify-content: space-between; font-size: .78rem; margin-top: 3px; font-variant-numeric: tabular-nums; }
+  .legend .ends span:last-child { text-align: right; }
+  .legend .cap { font-size: .78rem; color: var(--muted); margin-top: 2px; }
+  .legend .nodata { font-size: .78rem; margin-top: 6px; display: flex; align-items: center; gap: 6px; }
+  .legend .nodata i { width: 14px; height: 10px; background: #c9c9c9; border: 1px solid #9aa79f; display: inline-block; }
+
+  .row { display: flex; align-items: center; gap: 10px; margin-top: 12px; font-size: .82rem; }
+  .row input { flex: 1; accent-color: var(--ui); }
+
+  .drop {
+    position: absolute; inset: 0; z-index: 2000; display: none;
+    place-items: center; background: rgba(47, 107, 79, .18);
+    border: 4px dashed var(--ui); font-size: 1.3rem; font-weight: 700; color: var(--ui-dark);
+  }
+  .drop.on { display: grid; }
+
+  .leaflet-popup-content { font-family: var(--font); font-size: .8rem; margin: 10px 12px; }
+  .props { border-collapse: collapse; }
+  .props th, .props td { padding: 2px 6px; border-bottom: 1px solid #eceff0; text-align: left; vertical-align: top; }
+  .props th { color: var(--muted); font-weight: 400; white-space: nowrap; }
+  .props td { font-variant-numeric: tabular-nums; word-break: break-all; }
+  .props tr.sel th, .props tr.sel td { color: var(--ink); font-weight: 700; background: #fde8e7; }
+
+  @media (max-width: 640px) {
+    .panel { top: auto; bottom: 12px; left: 12px; right: 12px; width: auto; max-height: 46%; }
+  }
+</style>
+</head>
+<body>
+<div id="map" role="application" aria-label="地図"></div>
+
+<section class="panel" aria-label="操作パネル">
+  <h1>連続性マップ</h1>
+  <p class="sub">景観生態学II　GeoJSON の属性を白→赤で塗り分けて表示します</p>
+
+  <div class="step">
+    <h2><span class="n">1</span>ファイルを読み込む</h2>
+    <button class="btn" id="pick" type="button">GeoJSON を選ぶ</button>
+    <input id="file" type="file" accept=".geojson,.json,application/geo+json,application/json" hidden>
+    <p class="hint">地図の上にファイルをドラッグ＆ドロップしても読み込めます。</p>
+    <p class="file-name" id="fname"></p>
+    <p class="msg" id="msg" role="alert"></p>
+  </div>
+
+  <div class="step off" id="step2">
+    <h2><span class="n">2</span>色を塗る列を選ぶ</h2>
+    <select id="col" aria-label="色を塗る列"></select>
+    <div class="legend" id="legend" hidden>
+      <div class="bar"></div>
+      <div class="ends"><span id="vmin"></span><span id="vmax"></span></div>
+      <div class="cap">赤いほど値が大きい</div>
+      <div class="nodata" id="nodata" hidden><i></i>値なし</div>
+    </div>
+    <label class="row">透明度<input id="opacity" type="range" min="0.2" max="1" step="0.05" value="0.85"></label>
+  </div>
+</section>
+
+<div class="drop" id="drop">ここにドロップして読み込む</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+(() => {
+  const RAMP_LOW = [255, 255, 255];
+  const RAMP_HIGH = [224, 32, 27];
+  const NODATA = '#c9c9c9';
+  const PREFERRED = ['connect_rev', 'connect'];
+
+  const $ = (id) => document.getElementById(id);
+  const map = L.map('map', { zoomControl: false }).setView([35.45, 134.2], 11);
+
+  const gsi = (id, ext, maxNativeZoom) => L.tileLayer(
+    `https://cyberjapandata.gsi.go.jp/xyz/${id}/{z}/{x}/{y}.${ext}`,
+    { maxNativeZoom, maxZoom: 19, attribution: '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener">地理院タイル</a>' }
+  );
+  const bases = {
+    '淡色地図': gsi('pale', 'png', 18),
+    '標準地図': gsi('std', 'png', 18),
+    '写真': gsi('seamlessphoto', 'jpg', 18),
+  };
+  bases['淡色地図'].addTo(map);
+  L.control.zoom({ position: 'topright' }).addTo(map);
+  L.control.layers(bases, null, { position: 'topright' }).addTo(map);
+  L.control.scale({ imperial: false, position: 'bottomright' }).addTo(map);
+
+  let layer = null;
+  let data = null;
+  let column = '';
+  let range = null;
+  let opacity = Number($('opacity').value);
+
+  // ---------- 読み込み ----------
+  $('pick').addEventListener('click', () => $('file').click());
+  $('file').addEventListener('change', (e) => {
+    if (e.target.files[0]) readFile(e.target.files[0]);
+    e.target.value = '';
+  });
+
+  let dragDepth = 0;
+  window.addEventListener('dragenter', (e) => { if (hasFiles(e)) { dragDepth++; $('drop').classList.add('on'); } });
+  window.addEventListener('dragleave', () => { dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth) $('drop').classList.remove('on'); });
+  window.addEventListener('dragover', (e) => { if (hasFiles(e)) e.preventDefault(); });
+  window.addEventListener('drop', (e) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    dragDepth = 0;
+    $('drop').classList.remove('on');
+    const f = e.dataTransfer.files[0];
+    if (f) readFile(f);
+  });
+  function hasFiles(e) { return e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files'); }
+
+  function readFile(file) {
+    const r = new FileReader();
+    r.onload = () => load(r.result, file.name);
+    r.onerror = () => fail('ファイルを読み込めませんでした。もう一度選び直してください。');
+    r.readAsText(file);
+  }
+
+  async function loadUrl(url) {
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(res.status);
+      load(await res.text(), url.split('/').pop());
+    } catch (err) {
+      fail(`URL から読み込めませんでした（${url}）。`);
+    }
+  }
+
+  function load(text, name) {
+    $('msg').textContent = '';
+    let gj;
+    try { gj = JSON.parse(text); }
+    catch { return fail('GeoJSON として読めません。拡張子が .geojson のファイルを選んでください。'); }
+
+    if (gj.type === 'Feature') gj = { type: 'FeatureCollection', features: [gj] };
+    if (gj.type !== 'FeatureCollection' || !Array.isArray(gj.features) || !gj.features.length) {
+      return fail('地物が含まれていません。Colab で保存したファイルか確認してください。');
+    }
+    const pt = firstCoord(gj);
+    if (!pt || Math.abs(pt[0]) > 180 || Math.abs(pt[1]) > 90) {
+      return fail('座標が緯度経度になっていません。QGIS から書き出す場合は座標参照系を EPSG:4326 にしてください。');
+    }
+
+    data = gj;
+    $('fname').textContent = `読み込み済み：${name}（${gj.features.length} 地物）`;
+    buildColumnList();
+    $('step2').classList.remove('off');
+    draw();
+    const b = layer.getBounds();
+    if (b.isValid()) map.fitBounds(b, { padding: [30, 30] });
+  }
+
+  function fail(text) { $('msg').textContent = text; }
+
+  function firstCoord(gj) {
+    for (const f of gj.features) {
+      let c = f && f.geometry && f.geometry.coordinates;
+      while (Array.isArray(c) && Array.isArray(c[0])) c = c[0];
+      if (Array.isArray(c) && typeof c[0] === 'number') return c;
+    }
+    return null;
+  }
+
+  // ---------- 列の選択 ----------
+  function numericColumns(gj) {
+    const seen = new Map();
+    for (const f of gj.features) {
+      for (const [k, v] of Object.entries(f.properties || {})) {
+        if (v === null || v === undefined || v === '') continue;
+        const ok = typeof v === 'number' && Number.isFinite(v);
+        seen.set(k, (seen.get(k) ?? true) && ok);
+      }
+    }
+    return [...seen].filter(([, ok]) => ok).map(([k]) => k);
+  }
+
+  function buildColumnList() {
+    const cols = numericColumns(data);
+    const sel = $('col');
+    sel.innerHTML = '';
+    sel.append(new Option('塗らない（輪郭のみ）', ''));
+    cols.forEach((c) => sel.append(new Option(c, c)));
+    column = PREFERRED.find((c) => cols.includes(c)) || '';
+    sel.value = column;
+  }
+
+  $('col').addEventListener('change', (e) => { column = e.target.value; draw(); });
+  $('opacity').addEventListener('input', (e) => {
+    opacity = Number(e.target.value);
+    if (layer) layer.setStyle(style);
+  });
+
+  // ---------- 描画 ----------
+  function computeRange() {
+    if (!column) return null;
+    const vals = data.features.map((f) => (f.properties || {})[column]).filter((v) => typeof v === 'number' && Number.isFinite(v));
+    if (!vals.length) return null;
+    return { min: Math.min(...vals), max: Math.max(...vals) };
+  }
+
+  function colorOf(v) {
+    if (typeof v !== 'number' || !Number.isFinite(v)) return NODATA;
+    const t = range.max === range.min ? 1 : (v - range.min) / (range.max - range.min);
+    const c = RAMP_LOW.map((lo, i) => Math.round(lo + (RAMP_HIGH[i] - lo) * t));
+    return `rgb(${c.join(',')})`;
+  }
+
+  function style(f) {
+    const filled = column && range;
+    return {
+      color: '#3d4a43', weight: 0.8,
+      fillColor: filled ? colorOf((f.properties || {})[column]) : '#ffffff',
+      fillOpacity: filled ? opacity : 0.15,
+    };
+  }
+
+  function draw() {
+    range = computeRange();
+    if (layer) map.removeLayer(layer);
+    layer = L.geoJSON(data, {
+      style,
+      onEachFeature: (f, lyr) => lyr.bindPopup(() => popupHtml(f.properties || {}), { maxWidth: 320 }),
+    }).addTo(map);
+    updateLegend();
+  }
+
+  function updateLegend() {
+    const lg = $('legend');
+    if (!column || !range) { lg.hidden = true; return; }
+    lg.hidden = false;
+    $('vmin').textContent = fmt(range.min);
+    $('vmax').textContent = fmt(range.max);
+    const missing = data.features.some((f) => typeof (f.properties || {})[column] !== 'number');
+    $('nodata').hidden = !missing;
+  }
+
+  function fmt(v) {
+    if (v === 0) return '0';
+    const a = Math.abs(v);
+    if (a < 0.001 || a >= 1e6) return v.toExponential(2);
+    return Number(v.toPrecision(4)).toString();
+  }
+
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+  }
+
+  function popupHtml(p) {
+    const rows = Object.entries(p).map(([k, v]) =>
+      `<tr class="${k === column ? 'sel' : ''}"><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join('');
+    return `<table class="props">${rows}</table>`;
+  }
+
+  // ---------- URL パラメータ（?data=...）----------
+  const q = new URLSearchParams(location.search).get('data');
+  if (q) loadUrl(q);
+})();
+</script>
+</body>
+</html>
