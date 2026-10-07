@@ -1,2 +1,2 @@
 # landscape_ecologyII_toridai2026
-2026年度 景観生態学II 用レポジトリ
+鳥取大学2026年度 景観生態学II で使用するレポジトリです。
